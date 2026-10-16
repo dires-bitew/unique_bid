@@ -74,6 +74,10 @@ urlpatterns = [
         "api/wallet/",
         include("wallets.urls"),
     ),
+    path(
+        "api/",
+        include("bids.urls"),
+),
 ]
 
 
