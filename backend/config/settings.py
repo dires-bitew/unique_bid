@@ -53,6 +53,8 @@ INSTALLED_APPS = [
 
     # Local
     "accounts",
+    "products",
+    "auctions",
     "core",
 ]
 AUTH_USER_MODEL = "accounts.User"
@@ -177,3 +179,6 @@ SIMPLE_JWT = {
         "Bearer",
     ),
 }
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
