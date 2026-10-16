@@ -70,6 +70,10 @@ urlpatterns = [
         "api/",
         include("auctions.urls"),
     ),
+    path(
+        "api/wallet/",
+        include("wallets.urls"),
+    ),
 ]
 
 

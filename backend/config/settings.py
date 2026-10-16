@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "accounts",
     "products",
     "auctions",
+    "wallets.apps.WalletsConfig",
     "core",
 ]
 AUTH_USER_MODEL = "accounts.User"
