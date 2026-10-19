@@ -21,6 +21,9 @@ from wallets.models import (
 from wallets.services import (
     WalletService,
 )
+from bids.services import (
+    AuctionCancellationService
+)
 
 from .models import (
     AuctionResult,
@@ -258,4 +261,66 @@ class BidEngineTests(TestCase):
                 auction=self.auction
             ).count(),
             1,
+        )
+
+    def test_cancelled_auction_refunds_bid_fees(
+        self
+    ):
+
+        user = self.users[0]
+
+        self.submit(
+            user,
+            "25.00",
+        )
+
+        user.wallet.refresh_from_db()
+
+        self.assertEqual(
+            user.wallet.balance,
+            Decimal("990.00"),
+        )
+
+        (
+            auction,
+            refunded_count,
+            total_refunded,
+        ) = (
+            AuctionCancellationService
+            .cancel_auction(
+                auction_id=self.auction.pk,
+                cancelled_by=self.admin,
+                reason="Testing cancellation",
+            )
+        )
+
+        user.wallet.refresh_from_db()
+
+        self.assertEqual(
+            user.wallet.balance,
+            Decimal("1000.00"),
+        )
+
+        self.assertEqual(
+            refunded_count,
+            1,
+        )
+
+        self.assertEqual(
+            total_refunded,
+            Decimal("10.00"),
+        )
+
+        bid = Bid.objects.get(
+            auction=self.auction,
+            user=user,
+        )
+
+        self.assertEqual(
+            bid.status,
+            Bid.Status.REFUNDED,
+        )
+
+        self.assertIsNotNone(
+            bid.refund_transaction
         )

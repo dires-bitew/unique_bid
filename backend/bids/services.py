@@ -1,11 +1,18 @@
 from decimal import Decimal, InvalidOperation
+from collections import defaultdict
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
 
 from auctions.models import Auction
+from notifications.models import Notification
 
+from notifications.services import (
+    create_notification,
+)
+User = get_user_model()
 from wallets.models import WalletTransaction
 from wallets.services import (
     InsufficientFunds,
@@ -337,5 +344,322 @@ class AuctionClosingService:
                 "updated_at",
             ]
         )
+        notify_auction_result(
+            auction,
+            result,
+        )
 
         return result
+
+class AuctionCancellationService:
+
+    @classmethod
+    @transaction.atomic
+    def cancel_auction(
+        cls,
+        auction_id,
+        cancelled_by,
+        reason="",
+    ):
+
+        auction = (
+            Auction.objects
+            .select_for_update()
+            .get(pk=auction_id)
+        )
+
+        if (
+            auction.status
+            == Auction.Status.CLOSED
+        ):
+            raise BidError(
+                "A closed auction cannot be cancelled."
+            )
+
+        if (
+            auction.status
+            == Auction.Status.CANCELLED
+        ):
+
+            refunded_count = (
+                Bid.objects.filter(
+                    auction=auction,
+                    status=Bid.Status.REFUNDED,
+                ).count()
+            )
+
+            return (
+                auction,
+                refunded_count,
+                Decimal("0.00"),
+            )
+
+        bids = list(
+            Bid.objects
+            .select_for_update()
+            .select_related("user")
+            .filter(
+                auction=auction,
+                status=Bid.Status.ACCEPTED,
+            )
+        )
+
+        total_refunded = Decimal("0.00")
+
+        refunds_by_user = defaultdict(
+            lambda: Decimal("0.00")
+        )
+
+        for bid in bids:
+
+            refund_transaction = None
+
+            if bid.fee_charged > 0:
+
+                wallet, refund_transaction = (
+                    WalletService.credit(
+                        user=bid.user,
+
+                        amount=bid.fee_charged,
+
+                        transaction_type=(
+                            WalletTransaction
+                            .TransactionType
+                            .REFUND
+                        ),
+
+                        description=(
+                            f"Refund for cancelled "
+                            f"auction #{auction.pk}"
+                        ),
+
+                        created_by=cancelled_by,
+
+                        metadata={
+                            "auction_id":
+                                auction.pk,
+
+                            "bid_id":
+                                bid.pk,
+
+                            "original_fee_transaction":
+                                str(
+                                    bid
+                                    .wallet_transaction
+                                    .reference
+                                )
+                                if bid.wallet_transaction
+                                else None,
+                        },
+
+                        idempotency_key=(
+                            f"refund:bid:{bid.pk}"
+                        ),
+                    )
+                )
+
+            bid.status = Bid.Status.REFUNDED
+
+            bid.refund_transaction = (
+                refund_transaction
+            )
+
+            bid.save(
+                update_fields=[
+                    "status",
+                    "refund_transaction",
+                ]
+            )
+
+            total_refunded += (
+                bid.fee_charged
+            )
+
+            refunds_by_user[
+                bid.user_id
+            ] += bid.fee_charged
+
+        auction.status = (
+            Auction.Status.CANCELLED
+        )
+
+        auction.cancellation_reason = reason
+
+        auction.cancelled_at = timezone.now()
+
+        auction.save(
+            update_fields=[
+                "status",
+                "cancellation_reason",
+                "cancelled_at",
+                "updated_at",
+            ]
+        )
+
+        AuctionResult.objects.get_or_create(
+            auction=auction,
+            defaults={
+                "result_status":
+                    AuctionResult
+                    .ResultStatus
+                    .CANCELLED
+            },
+        )
+
+        users = User.objects.filter(
+            id__in=refunds_by_user.keys()
+        )
+
+        for user in users:
+
+            refunded_amount = (
+                refunds_by_user[user.id]
+            )
+
+            create_notification(
+                user=user,
+
+                notification_type=(
+                    Notification
+                    .Type
+                    .AUCTION_CANCELLED
+                ),
+
+                title="Auction cancelled",
+
+                message=(
+                    f"{auction.product.name} "
+                    f"auction was cancelled. "
+                    f"{refunded_amount} ETB "
+                    f"has been returned to "
+                    f"your wallet."
+                ),
+
+                data={
+                    "auction_id":
+                        auction.pk,
+
+                    "refund_amount":
+                        str(refunded_amount),
+                },
+            )
+
+        return (
+            auction,
+            len(bids),
+            total_refunded,
+        )
+
+
+def notify_auction_result(
+    auction,
+    result,
+):
+
+    user_ids = (
+        Bid.objects
+        .filter(
+            auction=auction,
+            status=Bid.Status.ACCEPTED,
+        )
+        .values_list(
+            "user_id",
+            flat=True,
+        )
+        .distinct()
+    )
+
+    users = User.objects.filter(
+        id__in=user_ids
+    )
+
+    for user in users:
+
+        if (
+            result.result_status
+            == AuctionResult
+            .ResultStatus
+            .NO_UNIQUE_BID
+        ):
+
+            create_notification(
+                user=user,
+
+                notification_type=(
+                    Notification
+                    .Type
+                    .NO_UNIQUE_BID
+                ),
+
+                title="Auction ended",
+
+                message=(
+                    f"{auction.product.name} "
+                    f"ended without a unique "
+                    f"winning bid."
+                ),
+
+                data={
+                    "auction_id":
+                        auction.pk,
+                },
+            )
+
+        elif (
+            result.winner_id
+            == user.id
+        ):
+
+            create_notification(
+                user=user,
+
+                notification_type=(
+                    Notification
+                    .Type
+                    .AUCTION_WON
+                ),
+
+                title="You won!",
+
+                message=(
+                    f"You won "
+                    f"{auction.product.name} "
+                    f"with the lowest unique "
+                    f"bid of "
+                    f"{result.winning_amount} ETB."
+                ),
+
+                data={
+                    "auction_id":
+                        auction.pk,
+
+                    "winning_amount":
+                        str(
+                            result.winning_amount
+                        ),
+                },
+            )
+
+        else:
+
+            create_notification(
+                user=user,
+
+                notification_type=(
+                    Notification
+                    .Type
+                    .AUCTION_ENDED
+                ),
+
+                title="Auction ended",
+
+                message=(
+                    f"{auction.product.name} "
+                    f"auction has ended."
+                ),
+
+                data={
+                    "auction_id":
+                        auction.pk,
+                },
+            )

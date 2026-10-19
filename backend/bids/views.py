@@ -39,6 +39,11 @@ from .services import (
     InvalidBidAmount,
 )
 
+from .services import (
+    AuctionCancellationService,
+)
+
+
 class SubmitBidView(APIView):
 
     permission_classes = [
@@ -271,4 +276,72 @@ class CloseAuctionView(APIView):
             AuctionResultSerializer(
                 result
             ).data
+        )
+
+
+class CancelAuctionView(APIView):
+
+    permission_classes = [
+        IsAdminUser
+    ]
+
+    def post(
+        self,
+        request,
+        auction_id,
+    ):
+
+        reason = request.data.get(
+            "reason",
+            "",
+        )
+
+        try:
+
+            (
+                auction,
+                refunded_count,
+                total_refunded,
+            ) = (
+                AuctionCancellationService
+                .cancel_auction(
+                    auction_id=auction_id,
+                    cancelled_by=request.user,
+                    reason=reason,
+                )
+            )
+
+        except Auction.DoesNotExist:
+
+            return Response(
+                {
+                    "detail":
+                    "Auction not found."
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        except BidError as exc:
+
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "auction_id":
+                    auction.pk,
+
+                "status":
+                    auction.status,
+
+                "refunded_bids":
+                    refunded_count,
+
+                "total_refunded":
+                    str(total_refunded),
+            }
         )

@@ -51,18 +51,11 @@ class AuctionResultSerializer(
     serializers.ModelSerializer
 ):
 
-    winner_email = (
-        serializers.EmailField(
-            source="winner.email",
-            read_only=True,
-        )
-    )
+    winner = serializers.SerializerMethodField()
 
-    product_name = (
-        serializers.CharField(
-            source="auction.product.name",
-            read_only=True,
-        )
+    product_name = serializers.CharField(
+        source="auction.product.name",
+        read_only=True,
     )
 
     class Meta:
@@ -73,7 +66,34 @@ class AuctionResultSerializer(
             "auction",
             "product_name",
             "result_status",
-            "winner_email",
+            "winner",
             "winning_amount",
             "finalized_at",
+        )
+
+        read_only_fields = fields
+
+    def get_winner(
+        self,
+        obj,
+    ):
+
+        if not obj.winner:
+            return None
+
+        email = obj.winner.email
+
+        try:
+            local, domain = email.split(
+                "@",
+                1,
+            )
+
+        except ValueError:
+            return "Winner"
+
+        visible = local[:2]
+
+        return (
+            f"{visible}***@{domain}"
         )

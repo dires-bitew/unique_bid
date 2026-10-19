@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "auctions",
     "wallets.apps.WalletsConfig",
     "bids",
+    "notifications",
     "core",
 ]
 AUTH_USER_MODEL = "accounts.User"
@@ -184,3 +185,34 @@ SIMPLE_JWT = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+CELERY_BROKER_URL = env(
+    "CELERY_BROKER_URL",
+    default="redis://127.0.0.1:6379/0",
+)
+
+CELERY_RESULT_BACKEND = env(
+    "CELERY_RESULT_BACKEND",
+    default="redis://127.0.0.1:6379/1",
+)
+
+CELERY_ACCEPT_CONTENT = ["json"]
+
+CELERY_TASK_SERIALIZER = "json"
+
+CELERY_RESULT_SERIALIZER = "json"
+
+CELERY_TIMEZONE = TIME_ZONE
+
+CELERY_BEAT_SCHEDULE = {
+
+    "open-due-auctions": {
+        "task": "auctions.tasks.open_due_auctions",
+        "schedule": 30.0,
+    },
+
+    "close-due-auctions": {
+        "task": "auctions.tasks.close_due_auctions",
+        "schedule": 30.0,
+    },
+}

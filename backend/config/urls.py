@@ -77,7 +77,11 @@ urlpatterns = [
     path(
         "api/",
         include("bids.urls"),
-),
+    ),
+    path(
+        "api/notifications/",
+        include("notifications.urls"),
+    ),
 ]
 
 

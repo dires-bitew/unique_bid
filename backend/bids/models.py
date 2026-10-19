@@ -44,6 +44,13 @@ class Bid(models.Model):
         null=True,
         blank=True,
     )
+    refund_transaction = models.OneToOneField(
+        WalletTransaction,
+        on_delete=models.PROTECT,
+        related_name="refunded_bid",
+        null=True,
+        blank=True,
+    )
 
     client_request_id = models.UUIDField(
         unique=True,

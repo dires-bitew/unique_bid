@@ -5,6 +5,7 @@ from .views import (
     CloseAuctionView,
     MyBidListView,
     SubmitBidView,
+    CancelAuctionView,
 )
 
 
@@ -32,5 +33,11 @@ urlpatterns = [
         "auctions/<int:auction_id>/close/",
         CloseAuctionView.as_view(),
         name="close-auction",
+    ),
+
+    path(
+        "auctions/<int:auction_id>/cancel/",
+        CancelAuctionView.as_view(),
+        name="cancel-auction",
     ),
 ]

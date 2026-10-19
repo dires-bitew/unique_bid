@@ -243,6 +243,93 @@ class Auction(models.Model):
         auto_now=True,
     )
 
+class Auction(models.Model):
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        SCHEDULED = "scheduled", "Scheduled"
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="auctions",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_auctions",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+
+    start_at = models.DateTimeField()
+
+    end_at = models.DateTimeField()
+
+    minimum_bid = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("1.00"),
+    )
+
+    maximum_bid = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    max_bids_per_user = models.PositiveIntegerField(
+        default=10,
+    )
+
+    reference_price_snapshot = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        editable=False,
+        null=True,
+    )
+
+    bid_fee = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        editable=False,
+        null=True,
+    )
+
+    fee_rule = models.ForeignKey(
+        BidFeeRule,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        editable=False,
+        related_name="auctions",
+    )
+
+    cancellation_reason = models.CharField(
+        max_length=500,
+        blank=True,
+    )
+
+    cancelled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
     class Meta:
         ordering = [
             "-created_at"
@@ -336,4 +423,4 @@ class Auction(models.Model):
             ]
             and self.start_at <= now < self.end_at
         )
-    
+
