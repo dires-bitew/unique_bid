@@ -15,11 +15,12 @@ import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env(
-    DJANGO_DEBUG=(bool, False)
+env = environ.Env()
+
+environ.Env.read_env(
+    BASE_DIR / ".env"
 )
 
-environ.Env.read_env(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -30,11 +31,21 @@ SECRET_KEY = env("DJANGO_SECRET_KEY")
 
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
 
-ALLOWED_HOSTS = env.list(
-    "DJANGO_ALLOWED_HOSTS",
-    default=["127.0.0.1", "localhost"],
-)
-
+ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
+    "10.0.2.2",
+]
+"""
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in env(
+        "DJANGO_ALLOWED_HOSTS",
+        default="127.0.0.1,localhost,10.0.2.2",
+    ).split(",")
+    if host.strip()
+]
+"""
 
 # Application definition
 
